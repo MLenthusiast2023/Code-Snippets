@@ -1,0 +1,40 @@
+/*SELECT: This part specifies the columns to be returned in the result set. 
+The query is retrieving the schema name, table name, index name, average fragmentation percentage, and page count for each index1.
+dbschemas.[name] as 'Schema': This returns the name of the schema associated with the index.
+dbtables.[name] as 'Table': This returns the name of the table on which the index is created.
+dbindexes.[name] as 'Index': This returns the name of the index.
+indexstats.avg_fragmentation_in_percent: This returns the average percentage of logical fragmentation in the index.
+indexstats.page_count: This returns the number of pages that the index occupies.
+FROM sys.dm_db_index_physical_stats (DB_ID(), NULL, NULL, NULL, NULL) AS indexstats: This function returns size and fragmentation information 
+for the data and indexes of the specified table or view in SQL Server. 
+It’s being called with DB_ID() to specify the current database and NULL values to include all objects, indexes, and partitions1.
+INNER JOIN sys.tables dbtables on dbtables.[object_id] = indexstats.[object_id]: This join retrieves the table names where each object_id 
+matches between the table and the index stats.
+INNER JOIN sys.schemas dbschemas on dbtables.[schema_id] = dbschemas.[schema_id]: This join retrieves the schema names where each schema_id 
+matches between the schema and the tables.
+INNER JOIN sys.indexes AS dbindexes ON dbindexes.[object_id] = indexstats.[object_id] AND indexstats.index_id = dbindexes.index_id: This join 
+retrieves the index names where each object_id and index_id match between the index stats and the indexes.
+WHERE indexstats.database_id = DB_ID(): This clause filters the results to only include indexes from the current database.
+ORDER BY indexstats.avg_fragmentation_in_percent DESC: This orders the results by the average fragmentation percentage in descending order, 
+so the most fragmented indexes are listed first.
+
+This query is particularly useful for identifying indexes that may need to be defragmented to improve performance. 
+Index defragmentation can be done using index rebuild or reorganize operations depending on the level of fragmentation.
+*/
+
+SELECT
+    dbschemas.[name] as 'Schema',
+    dbtables.[name] as 'Table',
+    dbindexes.[name] as 'Index',
+    indexstats.avg_fragmentation_in_percent,
+    indexstats.page_count
+FROM
+    sys.dm_db_index_physical_stats (DB_ID(), NULL, NULL, NULL, NULL) AS indexstats
+    INNER JOIN sys.tables dbtables on dbtables.[object_id] = indexstats.[object_id]
+    INNER JOIN sys.schemas dbschemas on dbtables.[schema_id] = dbschemas.[schema_id]
+    INNER JOIN sys.indexes AS dbindexes ON dbindexes.[object_id] = indexstats.[object_id]
+    AND indexstats.index_id = dbindexes.index_id
+WHERE
+    indexstats.database_id = DB_ID()
+ORDER BY
+    indexstats.avg_fragmentation_in_percent DESC
