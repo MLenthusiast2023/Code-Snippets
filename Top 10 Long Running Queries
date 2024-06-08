@@ -1,0 +1,56 @@
+/*
+Below is the code to identify TOP 10 long running queries in the SQL Server Instance the session is connected to
+and to find the queries and understand the Query Plan shown in the field qp.query_plan
+This will give a better idea to see what can be done to modify the query execution to reduce the latency.
+
+CAUTION: ALWAYS be sure to test the query modifications on Non Prod Environment before running it on PROD.
+
+SELECT TOP 10:
+SUBSTRING(qt.TEXT, (qs.statement_start_offset/2) + 1, ...): This extracts a portion of the SQL text of the query. 
+It uses the statement_start_offset and statement_end_offset to determine where to start and end the substring2.
+qs.execution_count: The number of times the query has been executed.
+qs.total_logical_reads: The total number of logical reads performed by the query.
+qs.last_logical_reads: The number of logical reads performed by the last execution of the query.
+qs.total_logical_writes: The total number of logical writes performed by the query.
+qs.last_logical_writes: The number of logical writes performed by the last execution of the query.
+qs.total_worker_time: The total amount of CPU time, in microseconds, that the query has consumed.
+qs.last_worker_time: The amount of CPU time, in microseconds, that the last execution of the query consumed.
+qs.total_elapsed_time/1000000 total_elapsed_time_in_sec: The total elapsed time for the query, converted to seconds.
+qs.last_elapsed_time/1000000 last_elapsed_time_in_sec: The elapsed time for the last execution of the query, converted to seconds.
+qs.last_execution_time: The last time the query was executed.
+qp.query_plan: The XML representation of the last query plan used to execute the query.
+The FROM clause specifies the dynamic management views (DMVs) that provide the performance data:
+
+sys.dm_exec_query_stats: Returns aggregate performance statistics for cached query plans.
+sys.dm_exec_sql_text: Returns the text of the SQL batch that is identified by the specified sql_handle.
+sys.dm_exec_query_plan: Returns the showplan XML for the query plan that is identified by the specified plan_handle.
+The CROSS APPLY joins the DMVs to the query execution statistics.
+
+Finally, the ORDER BY qs.total_logical_reads DESC sorts the results by the total number of logical reads in descending order, 
+meaning the queries with the most reads are at the top.
+
+This query is useful for identifying queries that may be consuming a lot of resources and could be candidates for optimization. 
+Remember to replace the -- ORDER BY comments with the actual ORDER BY clause you wish to use for sorting the results based on different performance metrics.
+*/
+SELECT
+    TOP 10 SUBSTRING(qt.TEXT, (qs.statement_start_offset/2) + 1,
+    ((CASE statement_end_offset
+        WHEN -1 THEN DATALENGTH(qt.TEXT)
+        ELSE qs.statement_end_offset
+        END - qs.statement_start_offset)/2) + 1),
+    qs.execution_count,
+    qs.total_logical_reads, qs.last_logical_reads,
+    qs.total_logical_writes, qs.last_logical_writes,
+    qs.total_worker_time,
+    qs.last_worker_time,
+    qs.total_elapsed_time/1000000 total_elapsed_time_in_sec,
+    qs.last_elapsed_time/1000000 last_elapsed_time_in_sec,
+    qs.last_execution_time,
+    qp.query_plan
+FROM
+    sys.dm_exec_query_stats qs
+    CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) qt
+    CROSS APPLY sys.dm_exec_query_plan(qs.plan_handle) qp
+ORDER BY qs.total_logical_reads DESC -- logical reads
+-- ORDER BY qs.total_logical_writes DESC -- logical writes
+-- ORDER BY qs.total_worker_time DESC -- CPU time
